@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+received_files/
+brag-output/
+.claude/
+.vscode/
+.idea/
+*.egg-info/
