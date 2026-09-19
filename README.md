@@ -7,15 +7,15 @@ A small client/server chat application that encrypts messages and images with **
 ## Features
 
 - **Two ciphers, selectable per client**
-  - **DES** (pre-shared key) for text, DES-CBC with a random IV for binary data.
-  - **ElGamal** (256-bit, chunked so messages of any length work). Public keys are exchanged automatically through the server.
+  - **DES-CBC** (pre-shared key, fresh random IV per message) for text and images.
+  - **ElGamal** over a standard 2048-bit safe-prime group, chunked so messages of any length work. Every user gets a keypair instantly, and public keys are exchanged automatically through the server and validated before use.
 - **Mixed algorithms** — an ElGamal user and a DES user can talk to each other; the receiver decrypts according to the algorithm named in each message.
 - **Encrypted image sharing** — send PNG, JPEG, GIF, BMP or WebP files up to 5 MB.
   - ElGamal uses *hybrid encryption*: the image is encrypted with a random one-time DES key, and only that key is encrypted with the recipient's ElGamal public key.
   - Receiver verifies a SHA-256 checksum, re-checks the file is really an image, sanitises the filename, and never overwrites existing files. Images are saved to `received_files/`.
 - **Live peer directory** — the server announces who is online and their public keys.
 - **Robust transport** — newline-delimited JSON framing (no merged/split messages), 16 MB per-message cap, duplicate-name and empty-name rejection, clean disconnect handling.
-- **Test suite** — 33 tests, including end-to-end runs against a real server.
+- **Test suite** — 40 tests (about 3 seconds), including end-to-end runs against a real server.
 
 ## Project layout
 
@@ -28,8 +28,9 @@ secure_chat/
 ├── server/
 │   └── server.py        # ChatServer: registration, peer directory, message/file relay
 ├── crypto/
-│   ├── des_crypto.py    # DESCipher (ECB for text, CBC for bytes)
-│   └── elgamal_crypto.py# ElGamalCipher (chunked, bytes + text)
+│   ├── des_crypto.py    # DESCipher (CBC, random IV; text and bytes)
+│   ├── elgamal_crypto.py# ElGamalCipher (chunked, bytes + text, key validation)
+│   └── elgamal_group.py # fixed 2048-bit safe prime shared by all users
 ├── common/
 │   └── utils.py         # constants, DES key lookup, JsonChannel (line-framed JSON)
 ├── docs/
@@ -104,7 +105,7 @@ alice.send_image("bob", "photo.png")
 python -m unittest discover -s tests -t . -v
 ```
 
-The suite covers cipher round-trips (Unicode, empty and long inputs, wrong-key behaviour), message framing under load, mixed algorithms, error paths (duplicate names, offline recipients), and encrypted image transfer with tamper, traversal and overwrite checks. It takes about a minute because each client generates a fresh ElGamal key.
+The suite covers cipher round-trips (Unicode, empty and long inputs, wrong-key behaviour), message framing under load, mixed algorithms, error paths (duplicate names, offline recipients), and encrypted image transfer with tamper, traversal and overwrite checks. It runs in a few seconds because ElGamal keys use a shared precomputed group.
 
 ## How it works
 
@@ -121,8 +122,8 @@ Full message formats are in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 This project demonstrates the algorithms; it is intentionally not a hardened system.
 
 - **The server sees plaintext text messages.** Clients attach an `original` field that the server prints next to the ciphertext, which is what the demo log shows. Construct clients with `send_plaintext=False` (and/or run the server with `--hide-plaintext`) to stop sending/logging it. Images are never sent or logged in plaintext.
-- **DES** has a 56-bit key and is broken by brute force; text messages use ECB mode, which leaks repeated blocks. The default key is public. Images use DES-CBC.
-- **ElGamal is 256-bit**, far below modern recommendations (2048+), chosen so key generation takes about a second.
+- **DES** has a 56-bit key and is broken by brute force. The default key is public. Both text and images use DES-CBC with a random IV per message, but the key is still only 56 bits.
+- **ElGamal uses a 2048-bit safe prime**, and peers' public keys are rejected unless they use that group. It is textbook ElGamal (no padding scheme or authentication), so ciphertexts are malleable.
 - No authentication: anyone can register any free name, and the server could substitute public keys (no key verification/fingerprints).
 - No transport encryption (TLS) and no forward secrecy.
 

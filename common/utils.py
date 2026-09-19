@@ -25,6 +25,7 @@ class JsonChannel:
 
     def __init__(self, sock: socket.socket):
         self.sock = sock
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # low latency for short chat lines
         self._reader = sock.makefile("rb")
         self._send_lock = threading.Lock()
 

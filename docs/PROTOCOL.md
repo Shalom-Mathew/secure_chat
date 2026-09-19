@@ -12,7 +12,7 @@ Big integers (ElGamal values) are sent as ordinary JSON numbers.
 {"type": "register", "name": "alice", "pubkey": {"p": 123, "g": 5, "y": 456}}
 ```
 
-Rejected with an `error` (and the connection closed) if the name is empty/whitespace or already in use.
+Rejected with an `error` (and the connection closed) if the name is empty/whitespace or already in use, or if `pubkey` is not a valid key in the shared ElGamal group.
 
 ### `message` — encrypted text
 
@@ -23,8 +23,8 @@ Rejected with an `error` (and the connection closed) if the name is empty/whites
 
 | `algorithm` | `encrypted` format |
 |---|---|
-| `DES` | base64 string of DES-ECB ciphertext (PKCS#7 padded) |
-| `ElGamal` | list of `[c1, c2]` integer pairs, one per ≤30-byte chunk, encrypted for the **recipient's** public key |
+| `DES` | base64 of `iv (8 bytes) + DES-CBC ciphertext` (PKCS#7 padded, fresh random IV) |
+| `ElGamal` | list of `[c1, c2]` integer pairs, one per ≤254-byte chunk, encrypted for the **recipient's** public key |
 
 `original` is optional and is only logged by the server. `from` is ignored; the server sets it from the registered name.
 
@@ -61,4 +61,4 @@ Rejected with an `error` (and the connection closed) if the name is empty/whites
 
 ## ElGamal block format
 
-Plaintext bytes are split into chunks of `(bits(p) - 1) // 8 - 1` bytes (30 for a 256-bit `p`). Each chunk is prefixed with `0x01` before being read as an integer `m < p`, so leading zero bytes are preserved. For each chunk: pick `k` coprime to `p-1`, output `c1 = g^k mod p`, `c2 = m · y^k mod p`. Decryption computes `m = c2 · (c1^x)^-1 mod p`, checks the `0x01` prefix, and strips it.
+All users share one fixed 2048-bit safe-prime group (`crypto/elgamal_group.py`, `g = 2`); `register` public keys must use exactly this `p` and `g` or they are rejected. Plaintext bytes are split into chunks of `(bits(p) - 1) // 8 - 1 = 254` bytes. Each chunk is prefixed with `0x01` before being read as an integer `m < p`, so leading zero bytes are preserved. For each chunk: pick a random `k` in `[1, q-1]` (`q = (p-1)/2`), output `c1 = g^k mod p`, `c2 = m · y^k mod p`. Decryption computes `m = c2 · (c1^x)^-1 mod p`, checks the `0x01` prefix, and strips it.

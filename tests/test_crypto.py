@@ -1,5 +1,8 @@
 import unittest
 
+from Crypto.Util.number import isPrime
+
+from crypto import elgamal_crypto
 from crypto.des_crypto import DESCipher
 from crypto.elgamal_crypto import ElGamalCipher
 
@@ -15,6 +18,16 @@ class DESTests(unittest.TestCase):
 
     def test_ciphertext_differs_from_plaintext(self):
         self.assertNotIn("Hello", DESCipher().encrypt("Hello"))
+
+    def test_encryption_is_randomized(self):
+        des = DESCipher()
+        self.assertNotEqual(des.encrypt("same"), des.encrypt("same"))
+
+    def test_repeated_blocks_do_not_repeat_in_ciphertext(self):
+        import base64
+        blob = base64.b64decode(DESCipher().encrypt("A" * 64))
+        blocks = [blob[i:i + 8] for i in range(8, len(blob), 8)]
+        self.assertEqual(len(blocks), len(set(blocks)))  # CBC: no identical blocks (ECB would repeat)
 
     def test_short_key_is_padded(self):
         des = DESCipher(b"abc")
@@ -52,6 +65,34 @@ class ElGamalTests(unittest.TestCase):
 
     def test_encryption_is_randomized(self):
         self.assertNotEqual(self.alice.encrypt("same"), self.alice.encrypt("same"))
+
+    def test_group_is_a_2048_bit_safe_prime(self):
+        self.assertEqual(elgamal_crypto.P.bit_length(), 2048)
+        self.assertTrue(isPrime(elgamal_crypto.P))
+        self.assertTrue(isPrime(elgamal_crypto.Q))
+
+    def test_rejects_public_keys_from_a_foreign_group(self):
+        bad = dict(self.bob.public_key, p=23, g=5, y=8)
+        with self.assertRaises(ValueError):
+            self.alice.encrypt("x", bad)
+        for y in (0, 1, elgamal_crypto.P - 1):
+            with self.assertRaises(ValueError):
+                self.alice.encrypt("x", dict(self.bob.public_key, y=y))
+        with self.assertRaises(ValueError):
+            self.alice.encrypt("x", {"p": "junk"})
+
+    def test_multi_chunk_message(self):
+        text = "z" * (elgamal_crypto.CHUNK_SIZE * 3 + 5)
+        blocks = self.alice.encrypt(text, self.bob.public_key)
+        self.assertEqual(len(blocks), 4)
+        self.assertEqual(self.bob.decrypt(blocks), text)
+
+    def test_key_generation_is_fast(self):
+        import time
+        start = time.monotonic()
+        for _ in range(5):
+            ElGamalCipher()
+        self.assertLess(time.monotonic() - start, 2.0)
 
 
 if __name__ == "__main__":

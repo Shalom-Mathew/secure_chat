@@ -79,6 +79,12 @@ class ChatTests(unittest.TestCase):
         with self.assertRaises(ConnectionError):
             make_client(self.server, "alice", "DES")
 
+    def test_bad_public_key_rejected(self):
+        client = ChatClient("mallory", "DES", "127.0.0.1", self.server.port)
+        client.elgamal.y = 1
+        with self.assertRaises(ConnectionError):
+            client.connect()
+
     def test_empty_name_rejected(self):
         with self.assertRaises(ConnectionError):
             make_client(self.server, "   ", "DES")

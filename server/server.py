@@ -11,6 +11,7 @@ import sys
 import threading
 
 from common.utils import DEFAULT_HOST, DEFAULT_PORT, JsonChannel
+from crypto.elgamal_crypto import validate_public_key
 
 
 class ChatServer:
@@ -67,6 +68,11 @@ class ChatServer:
         name = name.strip() if isinstance(name, str) else ""
         if not hello or hello.get("type") != "register" or not name:
             channel.send({"type": "error", "message": "expected a register message with a name"})
+            return None
+        try:
+            validate_public_key(hello.get("pubkey"))
+        except ValueError as e:
+            channel.send({"type": "error", "message": f"invalid public key: {e}"})
             return None
         with self._lock:
             if name in self.clients:
