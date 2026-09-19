@@ -222,6 +222,11 @@ class ChatGUI:
             return f"Encrypted with {to}'s public key (ElGamal)"
         return "Encrypted with the shared key (DES-CBC)"
 
+    def _decryption_note(self):
+        if self.client and self.client.last_incoming_algorithm == "DES":
+            return "Decrypted with the shared key (DES-CBC)"
+        return "Decrypted with your private key (ElGamal)"
+
     def send_text(self, text=None):
         if not self.client:
             return
@@ -275,10 +280,10 @@ class ChatGUI:
                 self._last_in_cipher = event[3]
         elif kind == "msg":
             self.messages.add("in", event[2], cipher=self._last_in_cipher)
-            self._flash_status("Decrypted with your private key")
+            self._flash_status(self._decryption_note())
         elif kind == "file":
             self.messages.add("in", text=event[2], path=event[2], cipher=self._last_in_cipher)
-            self._flash_status("Image decrypted and verified (SHA-256)")
+            self._flash_status(f"Image {self._decryption_note().lower()} and verified (SHA-256)")
         elif kind == "error":
             self._flash_status(event[1], T.RED)
         elif kind == "peers":

@@ -29,6 +29,7 @@ class ChatClient:
         self.cipher_callback = None    # callback(direction "in"/"out", peer, ciphertext_summary)
         self.peers_callback = None     # callback() when the online-peer list changes
         self.download_dir = download_dir
+        self.last_incoming_algorithm = None  # algorithm of the most recent message/file received
         self.peers = {}                # name -> ElGamal public key
         self._peers_lock = threading.Lock()
         self.des = DESCipher(des_key or get_des_key())
@@ -129,6 +130,7 @@ class ChatClient:
                 elif kind == "error":
                     self._report(info.get("message", "server error"))
                 elif kind == "file":
+                    self.last_incoming_algorithm = info.get("algorithm")
                     data = file_share.unpack_image(info, self.des, self.elgamal)
                     if self.cipher_callback:
                         self.cipher_callback("in", info["from"], f"{len(data):,} bytes, decrypted")
@@ -136,6 +138,7 @@ class ChatClient:
                     if self.file_callback:
                         self.file_callback(info["from"], saved)
                 elif kind == "message":
+                    self.last_incoming_algorithm = info.get("algorithm")
                     text = self._decrypt(info)
                     if self.cipher_callback:
                         self.cipher_callback("in", info["from"], summarize_cipher(info["algorithm"], info["encrypted"]))
