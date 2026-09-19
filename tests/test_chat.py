@@ -3,6 +3,7 @@
 import contextlib
 import io
 import queue
+import threading
 import unittest
 
 from client.client import ChatClient
@@ -78,6 +79,14 @@ class ChatTests(unittest.TestCase):
         self.connect("alice", "DES")
         with self.assertRaises(ConnectionError):
             make_client(self.server, "alice", "DES")
+
+    def test_server_stop_with_clients_connected_does_not_hang(self):
+        self.connect("alice", "DES")
+        self.connect("bob", "DES")
+        stopper = threading.Thread(target=self.server.stop)
+        stopper.start()
+        stopper.join(timeout=5)
+        self.assertFalse(stopper.is_alive(), "server.stop() hung")
 
     def test_bad_public_key_rejected(self):
         client = ChatClient("mallory", "DES", "127.0.0.1", self.server.port)

@@ -10,8 +10,17 @@ import socket
 import sys
 import threading
 
-from common.utils import DEFAULT_HOST, DEFAULT_PORT, JsonChannel
+from common.utils import DEFAULT_HOST, DEFAULT_PORT, JsonChannel, summarize_cipher
 from crypto.elgamal_crypto import validate_public_key
+
+
+def _safe_print(*args, **kwargs):
+    """print() that never raises on consoles that cannot encode emoji (e.g. cp1252)."""
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        text = " ".join(str(a) for a in args).encode("ascii", "replace").decode("ascii")
+        print(text, flush=kwargs.get("flush", False))
 
 
 class ChatServer:
@@ -32,7 +41,7 @@ class ChatServer:
         self._sock.listen(5)
         self.port = self._sock.getsockname()[1]
         self._running = True
-        print(f"[🖥️] Server running on {self.host}:{self.port}...\n", flush=True)
+        _safe_print(f"[🖥️] Server running on {self.host}:{self.port}...\n", flush=True)
         threading.Thread(target=self._accept_loop, daemon=True).start()
 
     def stop(self) -> None:
@@ -49,7 +58,7 @@ class ChatServer:
         try:
             threading.Event().wait()
         except KeyboardInterrupt:
-            print("\n[!] Shutting down.")
+            _safe_print("\n[!] Shutting down.")
         finally:
             self.stop()
 
@@ -84,7 +93,7 @@ class ChatServer:
         for peer, (_, key) in existing:
             channel.send({"type": "peer", "name": peer, "pubkey": key})
             self._safe_send(peer, {"type": "peer", "name": name, "pubkey": hello.get("pubkey")})
-        print(f"[+] {name} connected from {addr}", flush=True)
+        _safe_print(f"[+] {name} connected from {addr}", flush=True)
         return name
 
     def _handle_client(self, conn, addr) -> None:
@@ -101,7 +110,7 @@ class ChatServer:
                 elif msg.get("type") == "file":
                     self._relay_file(name, msg, channel)
         except (OSError, ValueError) as e:  # ValueError covers malformed JSON
-            print(f"[x] Error handling client: {e}", flush=True)
+            _safe_print(f"[x] Error handling client: {e}", flush=True)
         finally:
             if name:
                 with self._lock:
@@ -109,28 +118,28 @@ class ChatServer:
                     remaining = list(self.clients)
                 for peer in remaining:
                     self._safe_send(peer, {"type": "peer_left", "name": name})
-                print(f"[!] {name} disconnected.", flush=True)
+                _safe_print(f"[!] {name} disconnected.", flush=True)
             channel.close()
 
     def _relay(self, sender: str, msg: dict, channel: JsonChannel) -> None:
         receiver = msg.get("to")
         msg["from"] = sender  # never trust a client-supplied sender
-        print(f"\n📩 Message from {sender} → {receiver}", flush=True)
-        print(f"🔐 Algorithm: {msg.get('algorithm')}", flush=True)
+        _safe_print(f"\n📩 Message from {sender} → {receiver}", flush=True)
+        _safe_print(f"🔐 Algorithm: {msg.get('algorithm')}", flush=True)
         if self.show_plaintext and "original" in msg:
-            print(f"📝 Original: {msg['original']}", flush=True)
-        print(f"🧊 Encrypted: {msg.get('encrypted')}\n", flush=True)
+            _safe_print(f"📝 Original: {msg['original']}", flush=True)
+        _safe_print(f"🧊 Encrypted: {summarize_cipher(msg.get('algorithm'), msg.get('encrypted'))}\n", flush=True)
         if not self._safe_send(receiver, msg):
-            print(f"[!] Receiver {receiver} not connected.", flush=True)
+            _safe_print(f"[!] Receiver {receiver} not connected.", flush=True)
             channel.send({"type": "error", "message": f"{receiver} is not connected"})
 
     def _relay_file(self, sender: str, msg: dict, channel: JsonChannel) -> None:
         receiver = msg.get("to")
         msg["from"] = sender
-        print(f"\n🖼️ File from {sender} → {receiver}: {msg.get('filename')} "
+        _safe_print(f"\n🖼️ File from {sender} → {receiver}: {msg.get('filename')} "
               f"({msg.get('size')} bytes, {msg.get('algorithm')}, encrypted)\n", flush=True)
         if not self._safe_send(receiver, msg):
-            print(f"[!] Receiver {receiver} not connected.", flush=True)
+            _safe_print(f"[!] Receiver {receiver} not connected.", flush=True)
             channel.send({"type": "error", "message": f"{receiver} is not connected"})
 
     def _safe_send(self, name: str, obj: dict) -> bool:

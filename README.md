@@ -13,9 +13,10 @@ A small client/server chat application that encrypts messages and images with **
 - **Encrypted image sharing** — send PNG, JPEG, GIF, BMP or WebP files up to 5 MB.
   - ElGamal uses *hybrid encryption*: the image is encrypted with a random one-time DES key, and only that key is encrypted with the recipient's ElGamal public key.
   - Receiver verifies a SHA-256 checksum, re-checks the file is really an image, sanitises the filename, and never overwrites existing files. Images are saved to `received_files/`.
+- **Modern dark GUI** — rounded chat bubbles, live **DES / ElGamal switch**, recipient picker fed by the live peer list, a **Ciphertext** toggle that shows what actually travelled over the wire under each message, image **Attach** with an inline preview, status hints ("Encrypted with Bob's public key"), and inline form errors.
 - **Live peer directory** — the server announces who is online and their public keys.
 - **Robust transport** — newline-delimited JSON framing (no merged/split messages), 16 MB per-message cap, duplicate-name and empty-name rejection, clean disconnect handling.
-- **Test suite** — 40 tests (about 3 seconds), including end-to-end runs against a real server.
+- **Test suite** — 48 tests (about 8 seconds), including end-to-end runs against a real server and two real GUI windows for each algorithm.
 
 ## Project layout
 
@@ -24,7 +25,9 @@ secure_chat/
 ├── client/
 │   ├── client.py        # ChatClient: connect, key exchange, send/receive, decrypt
 │   ├── file_share.py    # image validation, packing/unpacking, safe saving
-│   └── gui.py           # Tkinter front end
+│   ├── gui.py           # Tkinter front end (dark theme)
+│   ├── theme.py         # design tokens: colours, spacing, radii, fonts
+│   └── widgets.py       # rounded buttons, segmented control, pill entry, message list
 ├── server/
 │   └── server.py        # ChatServer: registration, peer directory, message/file relay
 ├── crypto/
@@ -34,7 +37,8 @@ secure_chat/
 ├── common/
 │   └── utils.py         # constants, DES key lookup, JsonChannel (line-framed JSON)
 ├── docs/
-│   └── PROTOCOL.md      # wire protocol reference
+│   ├── PROTOCOL.md      # wire protocol reference
+│   └── images/          # real screenshots of the app (DES and ElGamal)
 ├── tests/               # unittest suite (crypto, chat, file sharing)
 ├── requirements.txt
 └── README.md
@@ -43,7 +47,7 @@ secure_chat/
 ## Requirements
 
 - Python 3.9+ (developed on 3.11/3.12) with Tkinter (bundled with the standard Windows/macOS installers; on Debian/Ubuntu: `sudo apt install python3-tk`)
-- [`pycryptodome`](https://pypi.org/project/pycryptodome/) (see `requirements.txt`)
+- [`pycryptodome`](https://pypi.org/project/pycryptodome/) for the ciphers and [`Pillow`](https://pypi.org/project/pillow/) for image previews (see `requirements.txt`). Without Pillow, PNG/GIF previews still work; other formats show a placeholder.
 
 ## Setup
 
@@ -73,12 +77,32 @@ python -m server.server --hide-plaintext   # do not log the 'original' field
 python -m client.gui
 ```
 
-In each window enter *Your Name*, pick an *Algorithm*, confirm the *Server* (`host:port`) and press **Connect**. Type the other user's name in *Recipient*, then:
+In each window choose **DES** or **ElGamal** with the switch at the top, enter a name, confirm the *Server* (`host:port`) and press **Connect**. Then pick who to talk to from the drop-down (it lists everyone online) and:
 
 - write a message and press **Send** (or Enter), or
-- press **Send Image** and choose a picture.
+- press **Attach** and choose a picture.
 
-Received text appears in the chat pane; received images are saved under `received_files/` and the path is shown in the chat.
+You can flip the algorithm at any time; the next message uses the new one, and the receiver decrypts according to what the message says it used. **Ciphertext** shows or hides the encrypted form under each message. Received images are saved under `received_files/` and previewed inline.
+
+### What it looks like
+
+The same conversation with each algorithm. Under every bubble, `sent:` / `received:` shows the ciphertext that crossed the network; it is identical on both ends, and it is not the plaintext.
+
+**DES** (shared key, CBC)
+
+| Alice | Bob |
+|---|---|
+| ![Alice, DES](docs/images/app-des-alice.png) | ![Bob, DES](docs/images/app-des-bob.png) |
+
+**ElGamal** (recipient's public key)
+
+| Alice | Bob |
+|---|---|
+| ![Alice, ElGamal](docs/images/app-elgamal-alice.png) | ![Bob, ElGamal](docs/images/app-elgamal-bob.png) |
+
+### Design notes
+
+The look is defined once in `client/theme.py`: dark surfaces that get lighter with elevation, an 8-px spacing rhythm, one accent per meaning (blue = you, green = secure, amber = ciphertext, red = error), a consistent corner radius, and interaction feedback (hover, pressed, focus ring, disabled) within about 150 ms. Text inputs scroll their content, so long messages never spill outside the box.
 
 > DES users must share the same key. The default demo key is `secret12`; set your own on **every** client with the `SECURE_CHAT_DES_KEY` environment variable (first 8 bytes are used).
 
@@ -105,7 +129,7 @@ alice.send_image("bob", "photo.png")
 python -m unittest discover -s tests -t . -v
 ```
 
-The suite covers cipher round-trips (Unicode, empty and long inputs, wrong-key behaviour), message framing under load, mixed algorithms, error paths (duplicate names, offline recipients), and encrypted image transfer with tamper, traversal and overwrite checks. It runs in a few seconds because ElGamal keys use a shared precomputed group.
+GUI tests open real windows and are skipped automatically on machines without a display. The suite covers cipher round-trips (Unicode, empty and long inputs, wrong-key behaviour), message framing under load, mixed algorithms, error paths (duplicate names, offline recipients), encrypted image transfer with tamper, traversal and overwrite checks, and full GUI flows (text both ways, image with preview, live algorithm switching, input overflow, inline errors) for both DES and ElGamal. It runs in a few seconds because ElGamal keys use a shared precomputed group.
 
 ## How it works
 

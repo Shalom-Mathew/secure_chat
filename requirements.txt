@@ -1,1 +1,2 @@
 pycryptodome==3.22.0
+Pillow>=10.0
